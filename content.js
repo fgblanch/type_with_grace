@@ -133,7 +133,7 @@ async function handleInput(event) {
                 input.value = correctedText;
                 //input.setSelectionRange(cursorPosition, cursorPosition);
             }
-        }, 300); 
+        }, 500); 
     }
 }
 
@@ -206,7 +206,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         console.log(`Downloaded ${e.loaded} of ${e.total} bytes.`);
                     });
                 },
-                systemPrompt: "You are a spelling corrector system. I give you a text sequence and you return the corrected sequence. Only correct wrong spellings. Do not remove any words. Do not add any words. Only correct the last sentence. Please do not provide any explanation. Please only return the corrected sequence and nothing else. Please do not include a period at the end. Please do not include a new line at the end."
+                systemPrompt: "You are a spelling corrector system. I give you a text sequence and you return the corrected sequence. Only correct wrong spellings. Do not remove any words from the sequence. Do not add any words to the sequence. Only correct the last sentence. Do not provide any explanation. Only return the corrected sequence and nothing else. Do not include a period at the end of the corrected sequence. Do not include a new line at the end of the corrected sequence."
             });
 
             /*session_predictor = await ai.languageModel.create({
