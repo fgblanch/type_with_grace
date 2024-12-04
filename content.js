@@ -93,6 +93,11 @@ function shouldSkipCorrection(event, text) {
         return true;
     }
 
+    //Check for backspace key
+    if (event.key === 'Backspace') {
+        return true;
+    }
+
     // Get the last character typed
     const lastChar = text.charAt(text.length - 1);
     
@@ -120,6 +125,7 @@ async function handleInput(event) {
         }
 
         // Set a new timeout for correction
+        // This allows the user to finish typing before the correction is applied.
         correctionTimeout = setTimeout(async () => {
             // Get correction for the full text
             const correctedText = await correctTypingMistakes(text);
@@ -127,7 +133,7 @@ async function handleInput(event) {
                 input.value = correctedText;
                 //input.setSelectionRange(cursorPosition, cursorPosition);
             }
-        }, 1000); // 1 second delay
+        }, 300); 
     }
 }
 
