@@ -1,7 +1,9 @@
 // Global variables for AI sessions
 let session_corrector = null;
 let session_predictor = null;
-let isEnabled = true; // Default to enabled
+let suggestionsEnabled = true; // Default to enabled
+let autocorrectEnabled = true; // Default to enabled
+let correctionTimeout = null; // For debouncing corrections
 
 // Style for the suggestion overlay
 const style = document.createElement('style');
@@ -25,8 +27,10 @@ async function correctTypingMistakes(text) {
         if (!session_corrector) {
             return text;
         }
-        const result = await session_corrector.prompt("Sequence: " + text);
-        console.log('Corrected text:', result);
+        const prompt = "sequence: " + text;
+        const result = await session_corrector.prompt(prompt);
+        console.log('Prompt:', prompt, 'Result:', result);
+        console.log(`${session_corrector.tokensSoFar}/${session_corrector.maxTokens} (${session_corrector.tokensLeft} left)`);
         return result;
     } catch (error) {
         console.error('Error correcting text:', error);
@@ -40,7 +44,7 @@ async function predictNextWord(currentText) {
         if (!session_predictor) {
             return "suggestion";
         }
-        const result = await session_predictor.prompt("Sequence: " + currentText);
+        const result = await session_predictor.prompt("sequence: " + currentText);
         console.log('Predicted next word:', result);
         return result;
     } catch (error) {
@@ -77,44 +81,66 @@ function getTextWidth(text, font) {
     return context.measureText(text).width;
 }
 
+// Function to check if we should skip the correction
+function shouldSkipCorrection(event, text) {
+    //Windows:  Check for Ctrl+Z (undo)
+    if (event.ctrlKey && event.key === 'z') {
+        return true;
+    }
+
+    //Mac:  Check for Command+Z (undo)
+    if (event.metaKey && event.key === 'z') {
+        return true;
+    }
+
+    // Get the last character typed
+    const lastChar = text.charAt(text.length - 1);
+    
+    // Skip if the last character is:
+    // - a space
+    // - a newline
+    // - empty (which could indicate backspace)
+    return lastChar === ' ' || 
+           lastChar === '\n' ||
+           lastChar === '\t' || 
+           lastChar === '';
+}
+
 // Function to handle input changes
 async function handleInput(event) {
-    if (!isEnabled) return; // Skip if disabled
-    
-    try {
-        const element = event.target;
-        const text = element.value;
-        
-        // Correct typing mistakes in real-time
-        const correctedText = await correctTypingMistakes(text);
-        if (correctedText !== text) {
-            element.value = correctedText;
+    const input = event.target;
+    const text = input.value;
+    const cursorPosition = input.selectionStart;
+
+    // Only perform autocorrect if enabled
+    if (autocorrectEnabled && !shouldSkipCorrection(event, text)) {
+        // Clear any pending correction
+        if (correctionTimeout) {
+            clearTimeout(correctionTimeout);
         }
 
-        // Show word prediction if we're at the end of a word or the input
-        if (text.endsWith(' ') || text === '') {
-            const suggestion = await predictNextWord(text);
-            if (suggestion) {
-                showSuggestion(element, suggestion);
+        // Set a new timeout for correction
+        correctionTimeout = setTimeout(async () => {
+            // Get correction for the full text
+            const correctedText = await correctTypingMistakes(text);
+            if (correctedText !== text) {
+                input.value = correctedText;
+                //input.setSelectionRange(cursorPosition, cursorPosition);
             }
-        }
-    } catch (error) {
-        console.error('Error handling input:', error);
+        }, 1000); // 1 second delay
     }
 }
 
-// Handle tab key to accept suggestions
+// Function to handle tab key to accept suggestions
 function handleKeyDown(event) {
-    if (!isEnabled) return; // Skip if disabled
-    
-    if (event.key === 'Tab') {
+    if (event.key === 'Tab' && suggestionsEnabled) {
         const element = event.target;
-        const suggestionEl = element.nextElementSibling;
+        const suggestion = document.querySelector('.turbotype-suggestion');
         
-        if (suggestionEl && suggestionEl.classList.contains('turbotype-suggestion')) {
+        if (suggestion) {
             event.preventDefault();
-            element.value += suggestionEl.textContent;
-            suggestionEl.remove();
+            element.value += suggestion.textContent;
+            suggestion.remove();
         }
     }
 }
@@ -122,11 +148,11 @@ function handleKeyDown(event) {
 // Add input event listeners to all text input elements
 function addInputListeners() {
     // Select all input elements and textareas
-    const inputElements = document.querySelectorAll('input[type="text"], input[type="search"], textarea');
+    const inputElements = document.querySelectorAll('input[type="text"],textarea');
     
     inputElements.forEach(element => {
         element.addEventListener('input', handleInput);
-        element.addEventListener('keydown', handleKeyDown);
+        //element.addEventListener('keydown', handleKeyDown);
     });
     
     // Create a MutationObserver to watch for dynamically added input elements
@@ -134,10 +160,11 @@ function addInputListeners() {
         mutations.forEach((mutation) => {
             mutation.addedNodes.forEach((node) => {
                 if (node.nodeType === 1) { // ELEMENT_NODE
-                    const inputs = node.querySelectorAll('input[type="text"], input[type="search"], textarea');
+                    const inputs = node.querySelectorAll('input[type="text"], textarea');
                     inputs.forEach(input => {
                         input.addEventListener('input', handleInput);
-                        input.addEventListener('keydown', handleKeyDown);
+                        // This event listener is only used for the suggestions feature
+                        //input.addEventListener('keydown', handleKeyDown);
                     });
                 }
             });
@@ -150,24 +177,15 @@ function addInputListeners() {
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'toggleExtension') {
-        isEnabled = message.enabled;
-        if (!isEnabled) {
-            // Remove all existing suggestions when disabled
-            document.querySelectorAll('.turbotype-suggestion').forEach(el => el.remove());
-        }
+    if (message.action === 'updateSettings') {
+        suggestionsEnabled = message.suggestionsEnabled;
+        autocorrectEnabled = message.autocorrectEnabled;
     }
 });
 
 // Initialize the extension with async support
 (async () => {
     try {
-        // Load initial state
-        const result = await chrome.storage.local.get(['enabled']);
-        isEnabled = result.enabled !== false; // Default to true if not set
-        
-        // Initialize listeners
-        addInputListeners();
         
         // Start by checking if it's possible to create a session
         const {available, defaultTemperature, defaultTopK, maxTopK } = await ai.languageModel.capabilities();
@@ -182,17 +200,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         console.log(`Downloaded ${e.loaded} of ${e.total} bytes.`);
                     });
                 },
-                systemPrompt: "You are a spelling corrector system. I give you a sequence of inputs and you return the corrected sequence. Please only return the corrected sequence and nothing else."
+                systemPrompt: "You are a spelling corrector system. I give you a text sequence and you return the corrected sequence. Only correct wrong spellings. Do not remove any words. Do not add any words. Only correct the last sentence. Please do not provide any explanation. Please only return the corrected sequence and nothing else. Please do not include a period at the end. Please do not include a new line at the end."
             });
 
-            session_predictor = await ai.languageModel.create({
+            /*session_predictor = await ai.languageModel.create({
                 monitor(m) {
                     m.addEventListener("downloadprogress", e => {
                         console.log(`Downloaded ${e.loaded} of ${e.total} bytes.`);
                     });
                 },
-                systemPrompt: "You are a writing assistant system. I give you a sequence of text and you return the predicted next word. Please only return the predicted next word and nothing else."
-            });
+                systemPrompt: "You are a writing assistant system. I give you a text sequence and you return the predicted next word. Please only return the predicted next word and nothing else."
+            });*/
           
         } else {
             console.log("Gemini Nano not available. Turbotyping is not available.");

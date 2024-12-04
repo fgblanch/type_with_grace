@@ -1,24 +1,35 @@
 document.addEventListener('DOMContentLoaded', function() {
-    const toggleSwitch = document.getElementById('toggleExtension');
+    const toggleSuggestions = document.getElementById('toggleSuggestions');
+    const toggleAutocorrect = document.getElementById('toggleAutocorrect');
 
-    // Load the current state
-    chrome.storage.local.get(['enabled'], function(result) {
-        toggleSwitch.checked = result.enabled !== false; // Default to true if not set
+    // Load the current states
+    chrome.storage.local.get(['suggestionsEnabled', 'autocorrectEnabled'], function(result) {
+        toggleSuggestions.checked = result.suggestionsEnabled !== false; // Default to true if not set
+        toggleAutocorrect.checked = result.autocorrectEnabled !== false; // Default to true if not set
     });
 
-    // Handle toggle changes
-    toggleSwitch.addEventListener('change', function() {
-        const enabled = toggleSwitch.checked;
-        
-        // Save the state
-        chrome.storage.local.set({ enabled: enabled });
+    // Handle suggestions toggle changes
+    toggleSuggestions.addEventListener('change', function() {
+        const suggestionsEnabled = toggleSuggestions.checked;
+        chrome.storage.local.set({ suggestionsEnabled: suggestionsEnabled });
+        sendMessageToContentScript();
+    });
 
-        // Send message to content script
+    // Handle autocorrect toggle changes
+    toggleAutocorrect.addEventListener('change', function() {
+        const autocorrectEnabled = toggleAutocorrect.checked;
+        chrome.storage.local.set({ autocorrectEnabled: autocorrectEnabled });
+        sendMessageToContentScript();
+    });
+
+    // Function to send current state to content script
+    function sendMessageToContentScript() {
         chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
             chrome.tabs.sendMessage(tabs[0].id, {
-                action: 'toggleExtension',
-                enabled: enabled
+                action: 'updateSettings',
+                suggestionsEnabled: toggleSuggestions.checked,
+                autocorrectEnabled: toggleAutocorrect.checked
             });
         });
-    });
+    }
 });
