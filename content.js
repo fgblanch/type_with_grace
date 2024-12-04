@@ -94,7 +94,7 @@ function shouldSkipCorrection(event, text) {
     }
 
     //Check for backspace key
-    if (event.key === 'Backspace') {
+    if (event.inputType === 'deleteContentBackward') {
         return true;
     }
 
@@ -206,7 +206,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         console.log(`Downloaded ${e.loaded} of ${e.total} bytes.`);
                     });
                 },
-                systemPrompt: "You are a spelling corrector system. I give you a text sequence and you return the corrected sequence. Only correct wrong spellings. Do not remove any words from the sequence. Do not add any words to the sequence. Only correct the last sentence. Do not provide any explanation. Only return the corrected sequence and nothing else. Do not include a period at the end of the corrected sequence. Do not include a new line at the end of the corrected sequence."
+                systemPrompt: "You are a spelling corrector system. I give you a text sequence and you return the corrected sequence. Please follow the following instructions: Only correct wrong spellings. Do not remove any words from the sequence. Do not add any words to the sequence. Do not provide any explanation. Only return the corrected sequence and nothing else. Do not include a period at the end of the corrected sequence. Do not include a new line at the end of the corrected sequence."
             });
 
             /*session_predictor = await ai.languageModel.create({
